@@ -1,13 +1,58 @@
-@import './GraphCalendar.Teams.module.scss';
+@import './../styles/colors.module';
 
-:global {
-  .fc {
-    color: #ffffff;
-  }
+[data-theme='dark'], [data-theme='contrast'] {
+  :global {
+    .fc {
+      color: $dark-primaryText;
+    }
 
-  .fc-unthemed {
-    td.fc-today {
-      background: #3B3A39;
+    .fc-unthemed {
+      td.fc-today {
+        background: $dark-backgroundColor;
+        border-color: $dark-lightBorderColor;
+      }
+    }
+
+    .fc-day-top.fc-other-month {
+      opacity: 0.5;
+    }
+
+    .graphCalendar {
+      .loading {
+        background-color: $dark-backgroundColor;
+        border-color: $dark-borderColor;
+        border-radius: 0.25em;
+        box-shadow: 0px 0px 5px 0px $dark-shadowColor;
+      }
+    }
+    
+    .ms-Spinner-label {
+      color: $dark-primaryText;
+    }
+
+    .ms-Spinner-circle {
+      border-color: $dark-spinnerPrimaryColor $dark-spinnerColor $dark-spinnerColor;
+    }
+
+    .ms-Fabric {
+      color: $dark-primaryText;
+    }
+
+    .ms-Button-icon {
+        color: $dark-primaryText;
+    }
+
+    .ms-Overlay {
+        background-color: $dark-overlay;
+    }
+    
+    .ms-Panel-main {
+        background-color: $dark-surfaceBackground;
+        border-left-color: $dark-panelBorder;
+        border-right-color: $dark-panelBorder;
+        .ms-Panel-headerText {
+            color: $dark-primaryText;
+        }
     }
   }
 }

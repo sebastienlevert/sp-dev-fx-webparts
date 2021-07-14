@@ -6,6 +6,7 @@ define([], function() {
     "EndTime": "End Time",
     "Location": "Location",
     "Body": "Body",
-    "Close": "Close"
+    "Close": "Close",
+    "Loading": "Loading your events"
   }
 });

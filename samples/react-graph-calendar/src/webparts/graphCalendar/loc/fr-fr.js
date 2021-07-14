@@ -7,5 +7,6 @@ define([], function() {
       "Location": "Location",
       "Body": "Contenu",
       "Close": "Fermer",
+      "Loading": "Chargement de vos événements"
     }
   });

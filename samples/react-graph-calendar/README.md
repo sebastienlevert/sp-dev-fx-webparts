@@ -25,7 +25,8 @@ Web part is developed using below technologies
 
 ## Prerequisites
  
-It is required that the users have view access on the underlying calendar.
+* It is required that the users have view access on the underlying calendar.
+* MGT SPFx should be installed in the environment ([Instructions](https://docs.microsoft.com/en-us/graph/toolkit/get-started/mgt-spfx#installation))
 
 ## Solution
 
@@ -44,6 +45,7 @@ Version|Date|Comments
 1.2.1|November 1, 2020 | Changed return behavior for single items vs recurring items
 1.2.2|November 3, 2020 | Show calendar in other languages
 1.2.3|November 6, 2020 | Added property panel translations (English, French, Dutch)
+1.2.4|July 6, 2021 | Inclusion of MGT to support throttling management
 
 ## Disclaimer
 **THIS CODE IS PROVIDED *AS IS* WITHOUT WARRANTY OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING ANY IMPLIED WARRANTIES OF FITNESS FOR A PARTICULAR PURPOSE, MERCHANTABILITY, OR NON-INFRINGEMENT.**
@@ -53,7 +55,8 @@ Version|Date|Comments
 ## Minimal Path to Awesome
 
 - Clone this repository
-- in the command line run:
+- If not done already, install the `@microsoft/mgt-spfx` package using the following [instructions](https://docs.microsoft.com/en-us/graph/toolkit/get-started/mgt-spfx#installation)
+- In the command line run:
   - `npm install`
   - `gulp serve`
   - `gulp bundle --ship`

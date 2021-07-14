@@ -2,8 +2,7 @@ import * as React from 'react';
 import * as ReactDom from 'react-dom';
 import { Version } from '@microsoft/sp-core-library';
 import {
-  BaseClientSideWebPart,
-  PropertyPaneTextField
+  BaseClientSideWebPart
 } from '@microsoft/sp-webpart-base';
 
 import * as strings from 'GraphCalendarWebPartStrings';
@@ -12,6 +11,7 @@ import { IGraphCalendarProps } from './components/IGraphCalendarProps';
 import * as microsoftTeams from '@microsoft/teams-js';
 import { initializeIcons } from 'office-ui-fabric-react';
 import { PropertyPaneSlider, PropertyPaneCheckbox, IPropertyPaneConfiguration } from '@microsoft/sp-property-pane';
+import { Providers, SharePointProvider } from '@microsoft/mgt-spfx';
 
 export interface IGraphCalendarWebPartProps {
   limit: number;
@@ -38,6 +38,10 @@ export default class GraphCalendarWebPart extends BaseClientSideWebPart<IGraphCa
   protected onInit(): Promise<any> {
     // create a new promise
     return new Promise<void>((resolve, _reject) => {
+
+      if (!Providers.globalProvider) {
+        Providers.globalProvider = new SharePointProvider(this.context);
+      }
 
       // Sets a default if limit has not been defined
       if (this.properties.limit === undefined) {

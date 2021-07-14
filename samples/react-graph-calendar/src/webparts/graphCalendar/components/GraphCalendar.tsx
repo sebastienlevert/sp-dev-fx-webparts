@@ -1,9 +1,7 @@
 import * as React from 'react';
-import { createRef } from "office-ui-fabric-react/lib/Utilities";
 import styles from './GraphCalendar.module.scss';
 import * as strings from "GraphCalendarWebPartStrings";
 import { IGraphCalendarProps } from './IGraphCalendarProps';
-import { MSGraphClient } from "@microsoft/sp-http";
 import FullCalendar from '@fullcalendar/react';
 import { EventInput } from '@fullcalendar/core';
 import dayGridPlugin from '@fullcalendar/daygrid';
@@ -11,10 +9,15 @@ import * as moment from 'moment-timezone';
 import { Panel, PanelType } from 'office-ui-fabric-react/lib/Panel';
 import { extendMoment } from 'moment-range';
 import allLocales from '@fullcalendar/core/locales-all';
+import { Providers } from '@microsoft/mgt-spfx';
+import DOMPurify from 'dompurify';
+import { Modal, setFocusVisibility, Spinner, SpinnerSize } from 'office-ui-fabric-react';
+import("./GraphCalendar.module.scss");
 
 const { range } = extendMoment(moment);
 
 interface IGraphCalendarState {
+  isLoading: boolean;
   events: EventInput[];
   height: number;
   currentActiveStartDate: Date;
@@ -31,7 +34,7 @@ enum TabType {
 }
 
 export default class GraphCalendar extends React.Component<IGraphCalendarProps, IGraphCalendarState> {
-  private calendar = createRef<FullCalendar>();
+  private calendar = React.createRef<FullCalendar>();
   private calendarLang: string = null;
 
   /**
@@ -40,14 +43,12 @@ export default class GraphCalendar extends React.Component<IGraphCalendarProps, 
    */
   constructor(props: IGraphCalendarProps) {
     super(props);
-
-    // If this is running in Teams, embed the specific Teams styling
+    
     if (this._isRunningInTeams()) {
       import("./GraphCalendar.Teams.module.scss");
-
-      if (this.props.teamsContext.theme == "dark") {
-        import("./GraphCalendar.Teams.Dark.module.scss");
-      }
+      import("./GraphCalendar.Teams.Dark.module.scss");
+      this._applyTheme(this.props.teamsContext.theme || 'default');
+      this.props.context.sdks.microsoftTeams.teamsJs.registerOnThemeChangeHandler(this._applyTheme);
     }
 
     //Set language of the calendar (if language is unknown, use english as default)
@@ -59,6 +60,7 @@ export default class GraphCalendar extends React.Component<IGraphCalendarProps, 
     }
 
     this.state = {
+      isLoading: false,
       events: [],
       height: this._calculateHeight(),
       currentActiveStartDate: null,
@@ -75,8 +77,8 @@ export default class GraphCalendar extends React.Component<IGraphCalendarProps, 
    */
   public componentDidMount(): void {
     // Gets the calendar current Active dates
-    let calendarStartDate = this.calendar.value.getApi().view.activeStart;
-    let calendarEndDate = this.calendar.value.getApi().view.activeEnd;
+    let calendarStartDate = this.calendar.current.getApi().view.activeStart;
+    let calendarEndDate = this.calendar.current.getApi().view.activeEnd;
 
     // Loads the events
     this._loadEvents(calendarStartDate, calendarEndDate);
@@ -87,18 +89,27 @@ export default class GraphCalendar extends React.Component<IGraphCalendarProps, 
    */
   public render(): React.ReactElement<IGraphCalendarProps> {
     return (
-      <div className={styles.graphCalendar}>
-        <FullCalendar
-          ref={this.calendar}
-          defaultView="dayGridMonth"
-          plugins={[dayGridPlugin]}
-          windowResize={this._handleResize.bind(this)}
-          datesRender={this._datesRender.bind(this)}
-          eventClick={this._openEventPanel.bind(this)}
-          height={this.state.height}
-          events={this.state.events}
-          locales={allLocales}
-          locale={this.calendarLang} />
+      <div className={"graphCalendar"}>
+        <div className={"container"}>
+          <div className={"inner"}>
+            <FullCalendar
+              ref={this.calendar}
+              defaultView="dayGridMonth"
+              plugins={[dayGridPlugin]}
+              windowResize={this._handleResize.bind(this)}
+              datesRender={this._datesRender.bind(this)}
+              eventClick={this._openEventPanel.bind(this)}
+              height={this.state.height}
+              events={this.state.events}              
+              locales={allLocales}
+              locale={this.calendarLang} />
+          </div>
+          {this.state.isLoading && 
+            <div className={`inner loading`}>
+                <Spinner size={SpinnerSize.large} label={strings.Loading} className={`spinner`} />     
+            </div>    
+          }
+        </div>
         {this.state.currentSelectedEvent &&
           <Panel
             isOpen={this.state.isEventDetailsOpen}
@@ -120,7 +131,14 @@ export default class GraphCalendar extends React.Component<IGraphCalendarProps, 
             {this.state.currentSelectedEvent.extendedProps["body"] &&
               <div>
                 <h3>{strings.Body}</h3>
-                <span>{this.state.currentSelectedEvent.extendedProps["body"]}</span>
+                
+                {this.state.currentSelectedEvent.extendedProps["bodyType"] == "text" &&
+                  <span>{this.state.currentSelectedEvent.extendedProps["body"]}</span>
+                }
+
+                {this.state.currentSelectedEvent.extendedProps["bodyType"] == "html" &&
+                  <div style={{ overflow: "hidden"}} dangerouslySetInnerHTML={{__html: this._sanitizeHtml(this.state.currentSelectedEvent.extendedProps["body"])}} />
+                }
               </div>
             }
           </Panel>
@@ -130,21 +148,45 @@ export default class GraphCalendar extends React.Component<IGraphCalendarProps, 
   }
 
   /**
+   * Applies the theme information to the body of the document and the webpart area
+   */
+  private _applyTheme = (theme: string): void => {
+    this.props.context.domElement.setAttribute('data-theme', theme);
+    document.body.setAttribute('data-theme', theme);
+  }
+
+  /**
    * Calculates the dynamic height of the surface to render.
    * Mainly used for Teams validation so it renders "full-screen" in Teams
    */
   private _calculateHeight(): number {
     if (this._isRunningInTeams()) {
-      return window.innerHeight - 30;
+      return window.innerHeight - 15;
     } else {
       return 600;
     }
   }
 
   /**
+   * Sanities the HTML to ensure no invalid tags are used
+   */
+  private _sanitizeHtml(value: string) : string {
+    return DOMPurify.sanitize(value);
+  }
+  
+  /**
+   * Filters out non-unique events
+   */
+  private _getUniqueEvents(events: EventInput[]) : EventInput[] {
+    return Array.from(new Set<EventInput>(events.filter((event, index) => { 
+      return events.map(mappedEvent => mappedEvent.id).indexOf(event.id) === index;
+    })));
+  }
+  
+  /**
    * Validates if the current web part is running in Teams
    */
-  private _isRunningInTeams() {
+   private _isRunningInTeams() {
     return this.props.teamsContext;
   }
 
@@ -160,6 +202,13 @@ export default class GraphCalendar extends React.Component<IGraphCalendarProps, 
 
     return _isPersonalTab;
   }
+
+    /**
+   * Validates if the current web part is running in a Communication Site
+   */
+     private _isCommunicationSite() {
+      return this.state.groupId === "";
+    }
 
   /**
    * Handles the click event and opens the OUIF Panel
@@ -187,10 +236,10 @@ export default class GraphCalendar extends React.Component<IGraphCalendarProps, 
    * @param info Information about the current active view
    */
   private _datesRender(info: any) {
-    if (this.calendar.value) {
+    if (this.calendar.current) {
 
       // If the active view has changed  
-      if ((this.state.currentActiveStartDate && this.state.currentActiveEndDate) && this.state.currentActiveStartDate.toString() != info.view.activeStart.toString() && this.state.currentActiveEndDate.toString() != info.view.activeEnd.toString()) {
+      if (!this.state.isLoading && (this.state.currentActiveStartDate && this.state.currentActiveEndDate) && this.state.currentActiveStartDate.toString() != info.view.activeStart.toString() && this.state.currentActiveEndDate.toString() != info.view.activeEnd.toString()) {
         this._loadEvents(info.view.activeStart, info.view.activeEnd);
       }
     }
@@ -230,7 +279,8 @@ export default class GraphCalendar extends React.Component<IGraphCalendarProps, 
         end: !item.isAllDay ? currentEndDate.clone().tz(Intl.DateTimeFormat().resolvedOptions().timeZone).format() : moment(currentEndDate).add(1, 'd').toISOString(),
         allDay: item.isAllDay,
         location: item.location.displayName,
-        body: item.bodyPreview,
+        body: item.body.content,
+        bodyType: item.body.contentType,
         type: item.type
       });
     });
@@ -262,9 +312,8 @@ export default class GraphCalendar extends React.Component<IGraphCalendarProps, 
       //Range of the recurring event item
       var r2 = range(recStartDate, recEndDate);
 
-
-      //Check if both ranges overlap
-      if (!!r1.overlaps(r2)) {
+      //Check if both ranges overlap or if there is no end date to the recurrence
+      if (!!r1.overlaps(r2) || recEndDate.getFullYear() === 1) {
         events.push({
           id: item.id,
           title: item.subject,
@@ -289,68 +338,67 @@ export default class GraphCalendar extends React.Component<IGraphCalendarProps, 
    * @param endDate The last visible date on the calendar
    */
   private _loadEvents(startDate: Date, endDate: Date): void {
+    this.setState({
+      isLoading: true
+    });
 
-    // If a Group was found or running in the context of a Personal tab, execute the query. If not, do nothing.
-    if (this.state.groupId || this.state.tabType == TabType.PersonalTab) {
-      var events: Array<EventInput> = new Array<EventInput>();
+    var events: Array<EventInput> = new Array<EventInput>();
 
-      this.props.context.msGraphClientFactory
-        .getClient()
-        .then((client: MSGraphClient): void => {
-          let apiUrl: string = `/groups/${this.state.groupId}/events`;
-          if (this._isPersonalTab()) {
-            apiUrl = '/me/events';
-          }
-
-          client
-            .api(apiUrl)
-            .version("v1.0")
-            .select('subject,start,end,location,bodyPreview,isAllDay,type')
-            .filter(`start/dateTime ge '${startDate.toISOString()}' and end/dateTime le '${endDate.toISOString()}' and type eq 'singleInstance'`)
-            .top(this.props.limit)
-            .get((err, res) => {
-
-              if (err) {
-                console.error(err);
-                return;
-              }
-
-              //Transform API data to Array<EventInput>
-              events = this._transformEvents(res);
-
-              if (this.props.showRecurrence) {
-                //Get recurring events and merge with the other (standard) events
-                this._getRecurringMaster(startDate, endDate).then((recData: Array<EventInput>) => {
-
-                  if (recData.length > 0) {
-                    this._getRecurrentEvents(recData, startDate, endDate).then((recEvents: Array<EventInput>) => {
-                      this.setState({
-                        events: [...recEvents, ...events].slice(0, this.props.limit),
-                      });
-                    });
-                  } else {
-                    this.setState({
-                      events: events,
-                    });
-                  }
-
-                });
-              } else {
-                //Show only (standard) events
-                this.setState({
-                  events: events,
-                });
-              }
-
-              // Sets the state with current active calendar dates
-              this.setState({
-                currentActiveStartDate: startDate,
-                currentActiveEndDate: endDate,
-                currentSelectedEvent: null
-              });
-            });
-        });
+    let apiUrl: string = `/groups/${this.state.groupId}/events`;
+    if (this._isPersonalTab() || this._isCommunicationSite()) {
+      apiUrl = '/me/events';
     }
+
+    Providers.globalProvider.graph.client
+      .api(apiUrl)
+      .version("v1.0")
+      .select('subject,start,end,location,bodyPreview,body,isAllDay,type')
+      .filter(`start/dateTime ge '${startDate.toISOString()}' and end/dateTime le '${endDate.toISOString()}' and type eq 'singleInstance'`)
+      .top(this.props.limit)
+      .get((err, res) => {
+
+        if (err) {
+          console.error(err);
+          return;
+        }
+
+        //Transform API data to Array<EventInput>
+        events = this._transformEvents(res);
+
+        if (this.props.showRecurrence) {
+          //Get recurring events and merge with the other (standard) events
+          this._getRecurringMaster(startDate, endDate).then((recData: Array<EventInput>) => {
+
+            if (recData.length > 0) {
+              this._getRecurrentEvents(recData, startDate, endDate).then((recEvents: Array<EventInput>) => {
+                this.setState({
+                  events: this._getUniqueEvents([...this.state.events, ...recEvents, ...events]),
+                  isLoading: false
+                });
+              });
+            } else {
+              this.setState({
+                events: this._getUniqueEvents([...this.state.events, ...events]),
+                isLoading: false
+              });
+            }
+
+          });
+        } else {
+          //Show only (standard) events
+          this.setState({
+            events: this._getUniqueEvents([...this.state.events, ...events]),
+            isLoading: false
+          });
+        }
+
+        // Sets the state with current active calendar dates
+        this.setState({
+          currentActiveStartDate: startDate,
+          currentActiveEndDate: endDate,
+          currentSelectedEvent: null
+        });
+      });
   }
 
   /**
@@ -361,33 +409,30 @@ export default class GraphCalendar extends React.Component<IGraphCalendarProps, 
   */
   private _getRecurrentEvents(events: Array<EventInput>, startDate: Date, endDate: Date): Promise<Array<EventInput>> {
     return new Promise<Array<EventInput>>((resolve, reject) => {
-      this.props.context.msGraphClientFactory
-        .getClient()
-        .then((client: MSGraphClient): void => {
-          var recEvents: Array<EventInput> = new Array<EventInput>();
-          var count = 0;
-          events.map((item: any) => {
-            let apiUrl: string = `/groups/${this.state.groupId}/events/${item.id}/instances?startDateTime=${startDate.toISOString()}&endDateTime=${endDate.toISOString()}`;
-            if (this._isPersonalTab()) {
-              apiUrl = `/me/events/${item.id}/instances?startDateTime=${startDate.toISOString()}&endDateTime=${endDate.toISOString()}`;
+      
+      var recEvents: Array<EventInput> = new Array<EventInput>();
+      var count = 0;
+      events.map((item: any) => {
+        let apiUrl: string = `/groups/${this.state.groupId}/events/${item.id}/instances?startDateTime=${startDate.toISOString()}&endDateTime=${endDate.toISOString()}`;
+        if (this._isPersonalTab() || this._isCommunicationSite()) {
+          apiUrl = `/me/events/${item.id}/instances?startDateTime=${startDate.toISOString()}&endDateTime=${endDate.toISOString()}`;
+        }
+        
+        Providers.globalProvider.graph.client
+          .api(apiUrl)
+          .version("v1.0")
+          .select('subject,start,end,location,bodyPreview,body,isAllDay,type')
+          .get((err, res) => {
+            if (err) {
+              reject(err);
             }
-            client
-              .api(apiUrl)
-              .version("v1.0")
-              .select('subject,start,end,location,bodyPreview,isAllDay,type')
-              .get((err, res) => {
-                if (err) {
-                  reject(err);
-                }
-                recEvents = recEvents.concat(this._transformEvents(res));
-                count += 1;
-                if (count == events.length) {
-                  resolve(recEvents);
-                }
-              });
+            recEvents = recEvents.concat(this._transformEvents(res));
+            count += 1;
+            if (count == events.length) {
+              resolve(recEvents);
+            }
           });
-
-        });
+      });
     });
   }
 
@@ -399,28 +444,26 @@ export default class GraphCalendar extends React.Component<IGraphCalendarProps, 
    */
   private _getRecurringMaster(startDate: Date, endDate: Date): Promise<Array<EventInput>> {
     return new Promise<Array<EventInput>>((resolve, reject) => {
-      this.props.context.msGraphClientFactory
-        .getClient()
-        .then((client: MSGraphClient): void => {
-          let apiUrl: string = `/groups/${this.state.groupId}/events`;
-          if (this._isPersonalTab()) {
-            apiUrl = '/me/events';
+
+      let apiUrl: string = `/groups/${this.state.groupId}/events`;
+      if (this._isPersonalTab() || this._isCommunicationSite()) {
+        apiUrl = '/me/events';
+      }
+      
+      Providers.globalProvider.graph.client
+        .api(apiUrl)
+        .version("v1.0")
+        .select('subject,start,end,location,bodyPreview,body,isAllDay,type,recurrence')
+        .filter(`type eq 'seriesMaster'`) //recurrening event is type 'seriesMaster'
+        .get((err, res) => {
+          if (err) {
+            reject(err);
           }
-          client
-            .api(apiUrl)
-            .version("v1.0")
-            .select('subject,start,end,location,bodyPreview,isAllDay,type,recurrence')
-            .filter(`type eq 'seriesMaster'`) //recurrening event is type 'seriesMaster'
-            .get((err, res) => {
-              if (err) {
-                reject(err);
-              }
-              else {
-                var recEvents: Array<EventInput> = new Array<EventInput>();
-                recEvents = this._filterRecEvents(res, startDate, endDate);
-                resolve(recEvents);
-              }
-            });
+          else {
+            var recEvents: Array<EventInput> = new Array<EventInput>();
+            recEvents = this._filterRecEvents(res, startDate, endDate);
+            resolve(recEvents);
+          }
         });
     });
   }

@@ -6,6 +6,7 @@ declare interface IGraphCalendarWebPartStrings {
   Location: string;
   Body: string;
   Close: string;
+  Loading: string;
 }
 
 declare module 'GraphCalendarWebPartStrings' {

@@ -7,5 +7,6 @@ define([], function() {
       "Location": "Locatie",
       "Body": "Inhoud",
       "Close": "Sluiten",
+      "Loading": "Uw evenementen laden"
     }
   });
